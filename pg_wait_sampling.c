@@ -534,7 +534,10 @@ receive_array(SHMRequest request, Size item_size, Size *count)
 
 	res = shm_mq_receive(mqh, &len, &data, false);
 	if (res != SHM_MQ_SUCCESS || len != sizeof(*count))
+	{
+		shm_mq_detach_compat(mqh, mq);
 		elog(ERROR, "Error reading mq.");
+	}
 	memcpy(count, data, sizeof(*count));
 
 	result = palloc(item_size * (*count));
@@ -544,16 +547,15 @@ receive_array(SHMRequest request, Size item_size, Size *count)
 	{
 		res = shm_mq_receive(mqh, &len, &data, false);
 		if (res != SHM_MQ_SUCCESS || len != item_size)
+		{
+			shm_mq_detach_compat(mqh, mq);
 			elog(ERROR, "Error reading mq.");
+		}
 		memcpy(ptr, data, item_size);
 		ptr += item_size;
 	}
 
-#if PG_VERSION_NUM >= 100000
-	shm_mq_detach(mqh);
-#else
-	shm_mq_detach(mq);
-#endif
+	shm_mq_detach_compat(mqh, mq);
 
 	LockRelease(&queueTag, ExclusiveLock, false);
 
@@ -667,11 +669,11 @@ pg_wait_sampling_reset_profile(PG_FUNCTION_ARGS)
 
 	check_shmem();
 
-	init_lock_tag(&tag, false);
+	init_lock_tag(&tag, PGWS_QUEUE_LOCK);
 
 	LockAcquire(&tag, ExclusiveLock, false, false);
 
-	init_lock_tag(&tagCollector, true);
+	init_lock_tag(&tagCollector, PGWS_COLLECTOR_LOCK);
 	LockAcquire(&tagCollector, ExclusiveLock, false, false);
 	LockRelease(&tagCollector, ExclusiveLock, false);
 
